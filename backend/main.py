@@ -9,15 +9,16 @@ pandas agent backed by Google Gemini for natural-language questions over telemet
 from __future__ import annotations
 
 import logging
-import os
 
+from pydantic import BaseModel
+import os
 from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_experimental.agents import create_pandas_dataframe_agent
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from langchain_experimental.agents import create_pandas_dataframe_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
-from pydantic import BaseModel
 
 from ml_model import MotorAnomalyDetector
 
@@ -82,6 +83,10 @@ def chat(body: ChatRequest) -> dict[str, str] | JSONResponse:
     """
     Answer questions about the loaded motor dataframe using a Gemini-powered agent.
 
+    Schema-first prompt (``include_df_in_prompt=False``) keeps prompts small; the agent
+    still runs Python against the full in-memory dataframe. ``temperature=0`` reduces
+    hallucination and output variance.
+
     Requires ``GOOGLE_API_KEY`` (or related Google GenAI env vars) in ``.env``.
     """
     try:
@@ -94,6 +99,7 @@ def chat(body: ChatRequest) -> dict[str, str] | JSONResponse:
             detector._df,
             verbose=True,
             allow_dangerous_code=True,
+            include_df_in_prompt=False,
         )
         result = agent.invoke({"input": body.message})
         output = result.get("output")
@@ -105,9 +111,14 @@ def chat(body: ChatRequest) -> dict[str, str] | JSONResponse:
                 },
             )
         return {"response": output}
-    except Exception as exc:  # noqa: BLE001 — return safe message to client
+    except Exception as exc:  # noqa: BLE001 — e.g. quota, token limits, tool errors
         logger.exception("Chat agent failed")
         return JSONResponse(
             status_code=500,
-            content={"response": f"Chat request failed: {exc}"},
+            content={
+                "response": (
+                    f"Chat request failed: {exc}. "
+                    "If this persists, check API quota, token limits, and logs."
+                ),
+            },
         )
