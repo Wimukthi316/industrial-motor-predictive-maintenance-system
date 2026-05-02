@@ -123,14 +123,16 @@ function ChartCard({ title, subtitle, children }) {
       {subtitle ? (
         <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
       ) : null}
-      <div className="mt-3 h-[260px] w-full">{children}</div>
+      <div className="mt-3 h-64 min-h-[256px] w-full min-w-0 shrink-0">
+        {children}
+      </div>
     </div>
   )
 }
 
 function ThermalTrendChart({ data }) {
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height={256}>
       <LineChart data={data} margin={chartMargin}>
         <defs>
           <linearGradient id="thermalLineGradient" x1="0" y1="0" x2="1" y2="0">
@@ -182,7 +184,7 @@ function ThermalTrendChart({ data }) {
 
 function VibrationTrendChart({ data }) {
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height={256}>
       <LineChart data={data} margin={{ ...chartMargin, bottom: 28 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.6} />
         <XAxis
@@ -257,8 +259,8 @@ function AnomalyScatterPanel({ data }) {
       <p className="mt-0.5 text-xs text-slate-500">
         Red: Isolation Forest anomaly (&minus;1) &middot; Slate: normal (1)
       </p>
-      <div className="mt-3 h-[320px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="mt-3 h-80 min-h-[320px] w-full min-w-0 shrink-0">
+        <ResponsiveContainer width="100%" height={320}>
           <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.6} />
             <XAxis
@@ -293,7 +295,13 @@ function AnomalyScatterPanel({ data }) {
   )
 }
 
-function AiDiagnosticsPanel() {
+function AiDiagnosticsPanel({
+  chatHistory,
+  chatInput,
+  onChatInputChange,
+  onSubmit,
+  isChatLoading,
+}) {
   return (
     <aside className="flex h-full min-h-0 w-1/4 shrink-0 flex-col border-l border-slate-700/80 bg-[#1e293b] shadow-xl">
       <div className="flex items-center gap-2 border-b border-slate-700/80 px-4 py-3">
@@ -303,30 +311,55 @@ function AiDiagnosticsPanel() {
         </h2>
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        <div className="rounded-lg rounded-tl-sm bg-slate-800/90 px-3 py-2.5 text-sm text-slate-300 shadow">
-          <p className="text-xs font-medium text-slate-500">Operator</p>
-          <p className="mt-1 leading-relaxed">
-            Why did Motor 2 flag a critical alert at 10:15 AM?
-          </p>
-        </div>
-        <div className="rounded-lg rounded-tr-sm border border-cyan-900/50 bg-cyan-950/40 px-3 py-2.5 text-sm text-slate-200 shadow">
-          <p className="text-xs font-medium text-cyan-500/90">AI</p>
-          <p className="mt-1 leading-relaxed text-slate-300">
-            At 10:15 AM, the Isolation Forest model detected a multidimensional
-            anomaly. While temperature (38°C) was within normal limits, there was
-            a sudden spike in Vibration-Z (1.8g) and Amps (0.7A). This pattern
-            strongly suggests early-stage bearing wear.
-          </p>
-        </div>
+        {chatHistory.map((entry, index) => (
+          <div
+            key={`${entry.sender}-${index}`}
+            className={`flex w-full ${entry.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            {entry.sender === 'user' ? (
+              <div className="max-w-[88%] rounded-lg rounded-tr-sm bg-sky-900/60 px-3 py-2.5 text-left text-sm text-slate-100 shadow-md ring-1 ring-sky-700/40">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-sky-300/90">
+                  You
+                </p>
+                <p className="mt-1 whitespace-pre-wrap leading-relaxed">
+                  {entry.text}
+                </p>
+              </div>
+            ) : (
+              <div className="max-w-[88%] rounded-lg rounded-tl-sm border border-slate-600/80 bg-transparent px-3 py-2.5 text-sm text-slate-200 shadow-sm">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-cyan-500/90">
+                  AI
+                </p>
+                <p className="mt-1 whitespace-pre-wrap leading-relaxed text-slate-300">
+                  {entry.text}
+                </p>
+              </div>
+            )}
+          </div>
+        ))}
+        {isChatLoading ? (
+          <p className="pl-1 text-xs italic text-slate-500">Agent is thinking...</p>
+        ) : null}
       </div>
       <div className="border-t border-slate-700/80 p-3">
-        <input
-          type="text"
-          disabled
-          placeholder="Agent offline in demo mode..."
-          className="w-full cursor-not-allowed rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2.5 text-sm text-slate-500 placeholder:text-slate-600"
-          aria-label="Chat input disabled in demo"
-        />
+        <form onSubmit={onSubmit} className="flex gap-2">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={onChatInputChange}
+            disabled={isChatLoading}
+            placeholder="Ask about motor telemetry..."
+            className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:border-cyan-600 focus:outline-none focus:ring-1 focus:ring-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Chat message"
+          />
+          <button
+            type="submit"
+            disabled={isChatLoading}
+            className="shrink-0 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-[#1e293b] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
       </div>
     </aside>
   )
@@ -353,6 +386,15 @@ function App() {
   const [stats, setStats] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  const [chatInput, setChatInput] = useState('')
+  const [chatHistory, setChatHistory] = useState([
+    {
+      sender: 'ai',
+      text: "Hello! I am the Human-in-the-Loop Escalation Agent. How can I assist you with the motor data today?",
+    },
+  ])
+  const [isChatLoading, setIsChatLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setError(null)
@@ -382,6 +424,41 @@ function App() {
   }, [loadData])
 
   const chartData = useMemo(() => motorData.slice(-150), [motorData])
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+    const text = chatInput.trim()
+    if (!text) return
+
+    setChatHistory((prev) => [...prev, { sender: 'user', text }])
+    setChatInput('')
+    setIsChatLoading(true)
+
+    try {
+      const res = await axios.post(`${API_BASE}/api/chat`, { message: text })
+      const reply = res.data?.response
+      const aiText =
+        reply != null && reply !== ''
+          ? String(reply)
+          : 'No response from the agent.'
+      setChatHistory((prev) => [...prev, { sender: 'ai', text: aiText }])
+    } catch (err) {
+      const fromApi = err?.response?.data?.response
+      const details =
+        typeof fromApi === 'string'
+          ? fromApi
+          : err?.message || 'Network error — could not reach the chat API.'
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          sender: 'ai',
+          text: `Sorry, I could not complete that request. ${details}`,
+        },
+      ])
+    } finally {
+      setIsChatLoading(false)
+    }
+  }
 
   if (isLoading) {
     return <LoadingView />
@@ -441,7 +518,13 @@ function App() {
             </section>
           </div>
         </main>
-        <AiDiagnosticsPanel />
+        <AiDiagnosticsPanel
+          chatHistory={chatHistory}
+          chatInput={chatInput}
+          onChatInputChange={(e) => setChatInput(e.target.value)}
+          onSubmit={handleSendMessage}
+          isChatLoading={isChatLoading}
+        />
       </div>
     </div>
   )

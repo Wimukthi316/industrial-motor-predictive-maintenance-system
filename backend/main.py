@@ -93,7 +93,10 @@ def chat(body: ChatRequest) -> dict[str, str] | JSONResponse:
         if os.getenv("GOOGLE_API_KEY") is None:
             logger.warning("GOOGLE_API_KEY is not set; Gemini may reject requests.")
 
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash-latest",
+            temperature=0,
+        )
         agent = create_pandas_dataframe_agent(
             llm,
             detector._df,
