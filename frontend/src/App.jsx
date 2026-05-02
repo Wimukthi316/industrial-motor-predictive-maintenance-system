@@ -5,13 +5,18 @@ import {
   AlertTriangle,
   Bot,
   CheckCircle,
+  MessageSquare,
   RefreshCw,
+  X,
 } from 'lucide-react'
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Scatter,
   ScatterChart,
@@ -21,6 +26,9 @@ import {
 } from 'recharts'
 
 const API_BASE = 'http://127.0.0.1:8000'
+
+/** Fixed plot size avoids ResponsiveContainer measuring -1×-1 on first paint. */
+const CHART_PX = 450
 
 const chartMargin = { top: 8, right: 16, left: 0, bottom: 8 }
 
@@ -123,7 +131,10 @@ function ChartCard({ title, subtitle, children }) {
       {subtitle ? (
         <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
       ) : null}
-      <div className="mt-3 h-64 min-h-[256px] w-full min-w-0 shrink-0">
+      <div
+        className="mt-3 w-full min-w-0 shrink-0"
+        style={{ height: CHART_PX, minHeight: CHART_PX }}
+      >
         {children}
       </div>
     </div>
@@ -132,7 +143,7 @@ function ChartCard({ title, subtitle, children }) {
 
 function ThermalTrendChart({ data }) {
   return (
-    <ResponsiveContainer width="100%" height={256}>
+    <ResponsiveContainer width="100%" height={CHART_PX} minHeight={CHART_PX}>
       <LineChart data={data} margin={chartMargin}>
         <defs>
           <linearGradient id="thermalLineGradient" x1="0" y1="0" x2="1" y2="0">
@@ -168,6 +179,30 @@ function ThermalTrendChart({ data }) {
           contentStyle={tooltipStyle}
           labelFormatter={(label) => String(label)}
         />
+        <ReferenceLine
+          y={45}
+          stroke="#ef4444"
+          strokeDasharray="6 4"
+          strokeWidth={1.5}
+          label={{
+            value: 'Critical Temp (45°C)',
+            fill: '#fca5a5',
+            fontSize: 11,
+            position: 'insideRight',
+          }}
+        />
+        <ReferenceLine
+          y={35}
+          stroke="#eab308"
+          strokeDasharray="6 4"
+          strokeWidth={1.5}
+          label={{
+            value: 'Warning Temp (35°C)',
+            fill: '#fde047',
+            fontSize: 11,
+            position: 'insideLeft',
+          }}
+        />
         <Line
           type="monotone"
           dataKey="motor_temp"
@@ -184,7 +219,7 @@ function ThermalTrendChart({ data }) {
 
 function VibrationTrendChart({ data }) {
   return (
-    <ResponsiveContainer width="100%" height={256}>
+    <ResponsiveContainer width="100%" height={CHART_PX} minHeight={CHART_PX}>
       <LineChart data={data} margin={{ ...chartMargin, bottom: 28 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.6} />
         <XAxis
@@ -238,60 +273,129 @@ function VibrationTrendChart({ data }) {
   )
 }
 
+function MotorLoadTrendChart({ data }) {
+  return (
+    <ResponsiveContainer width="100%" height={CHART_PX} minHeight={CHART_PX}>
+      <AreaChart data={data} margin={chartMargin}>
+        <defs>
+          <linearGradient id="motorAmpGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.5} />
+            <stop offset="70%" stopColor="#3b82f6" stopOpacity={0.12} />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.6} />
+        <XAxis
+          dataKey="timestamp"
+          tick={axisTick}
+          tickLine={axisLine}
+          axisLine={axisLine}
+          tickFormatter={formatTickTime}
+          interval="preserveStartEnd"
+          minTickGap={28}
+        />
+        <YAxis
+          dataKey="amp"
+          tick={axisTick}
+          tickLine={axisLine}
+          axisLine={axisLine}
+          width={40}
+          label={{
+            value: 'A',
+            angle: -90,
+            position: 'insideLeft',
+            fill: '#64748b',
+            fontSize: 11,
+          }}
+        />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          labelFormatter={(label) => String(label)}
+        />
+        <ReferenceLine
+          y={0.8}
+          stroke="#ef4444"
+          strokeDasharray="6 4"
+          strokeWidth={1.5}
+          label={{
+            value: 'Overload Limit (0.8A)',
+            fill: '#fca5a5',
+            fontSize: 11,
+            position: 'insideRight',
+          }}
+        />
+        <Area
+          type="monotone"
+          dataKey="amp"
+          name="Motor current"
+          stroke="#3b82f6"
+          strokeWidth={2.5}
+          fill="url(#motorAmpGradient)"
+          dot={false}
+          activeDot={{ r: 5, fill: '#60a5fa' }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
 /**
- * Isolation Forest outcomes: anomaly_score -1 → red, larger dot; 1 → slate, smaller.
+ * Point appearance from dataset ``status``: Critical / Warning / Normal.
  */
 function scatterShape(props) {
   const { cx, cy, payload } = props
   if (cx == null || cy == null || !payload) return null
-  const isAnomaly = payload.anomaly_score === -1
-  const r = isAnomaly ? 6 : 3.5
-  const fill = isAnomaly ? '#ef4444' : '#64748b'
+
+  const status = payload.status
+  let fill = '#64748b'
+  let r = 3
+
+  if (status === 'Critical') {
+    fill = '#ef4444'
+    r = 6
+  } else if (status === 'Warning') {
+    fill = '#eab308'
+    r = 4
+  } else if (status === 'Normal') {
+    fill = '#64748b'
+    r = 3
+  }
+
   return <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.92} />
 }
 
-function AnomalyScatterPanel({ data }) {
+function AnomalyScatterChart({ data }) {
   return (
-    <div className="rounded-xl border border-slate-700/80 bg-slate-900/40 p-4 shadow-md">
-      <h3 className="text-sm font-semibold text-white">
-        Current vs temperature (anomaly overlay)
-      </h3>
-      <p className="mt-0.5 text-xs text-slate-500">
-        Red: Isolation Forest anomaly (&minus;1) &middot; Slate: normal (1)
-      </p>
-      <div className="mt-3 h-80 min-h-[320px] w-full min-w-0 shrink-0">
-        <ResponsiveContainer width="100%" height={320}>
-          <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.6} />
-            <XAxis
-              type="number"
-              dataKey="motor_temp"
-              name="Motor temp"
-              unit="°C"
-              tick={axisTick}
-              tickLine={axisLine}
-              axisLine={axisLine}
-            />
-            <YAxis
-              type="number"
-              dataKey="amp"
-              name="Amps"
-              tick={axisTick}
-              tickLine={axisLine}
-              axisLine={axisLine}
-              width={40}
-            />
-            <Tooltip
-              cursor={{ strokeDasharray: '3 3' }}
-              contentStyle={tooltipStyle}
-              formatter={(value, name) => [value, name]}
-              labelFormatter={() => 'Reading'}
-            />
-            <Scatter name="Motors" data={data} shape={scatterShape} />
-          </ScatterChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height={CHART_PX} minHeight={CHART_PX}>
+      <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.6} />
+        <XAxis
+          type="number"
+          dataKey="motor_temp"
+          name="Motor temp"
+          unit="°C"
+          tick={axisTick}
+          tickLine={axisLine}
+          axisLine={axisLine}
+        />
+        <YAxis
+          type="number"
+          dataKey="amp"
+          name="Amps"
+          tick={axisTick}
+          tickLine={axisLine}
+          axisLine={axisLine}
+          width={40}
+        />
+        <Tooltip
+          cursor={{ strokeDasharray: '3 3' }}
+          contentStyle={tooltipStyle}
+          formatter={(value, name) => [value, name]}
+          labelFormatter={() => 'Reading'}
+        />
+        <Scatter name="Motors" data={data} shape={scatterShape} />
+      </ScatterChart>
+    </ResponsiveContainer>
   )
 }
 
@@ -301,14 +405,23 @@ function AiDiagnosticsPanel({
   onChatInputChange,
   onSubmit,
   isChatLoading,
+  onClose,
 }) {
   return (
-    <aside className="flex h-full min-h-0 w-1/4 shrink-0 flex-col border-l border-slate-700/80 bg-[#1e293b] shadow-xl">
-      <div className="flex items-center gap-2 border-b border-slate-700/80 px-4 py-3">
-        <Bot className="h-5 w-5 text-cyan-400" aria-hidden />
-        <h2 className="text-sm font-semibold tracking-tight text-white">
+    <div className="fixed bottom-6 right-6 z-50 flex h-[500px] w-96 flex-col rounded-2xl border border-slate-700 bg-[#1e293b] shadow-2xl">
+      <div className="flex shrink-0 items-center gap-2 border-b border-slate-700/80 px-4 py-3">
+        <Bot className="h-5 w-5 shrink-0 text-cyan-400" aria-hidden />
+        <h2 className="min-w-0 flex-1 text-sm font-semibold tracking-tight text-white">
           AI Diagnostics
         </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-700/80 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          aria-label="Close chat"
+        >
+          <X className="h-5 w-5" aria-hidden />
+        </button>
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {chatHistory.map((entry, index) => (
@@ -361,7 +474,7 @@ function AiDiagnosticsPanel({
           </button>
         </form>
       </div>
-    </aside>
+    </div>
   )
 }
 
@@ -395,6 +508,7 @@ function App() {
     },
   ])
   const [isChatLoading, setIsChatLoading] = useState(false)
+  const [isChatOpen, setIsChatOpen] = useState(false)
 
   const loadData = useCallback(async () => {
     setError(null)
@@ -423,7 +537,7 @@ function App() {
     loadData()
   }, [loadData])
 
-  const chartData = useMemo(() => motorData.slice(-150), [motorData])
+  const chartData = useMemo(() => motorData.slice(-400), [motorData])
 
   const handleSendMessage = async (e) => {
     e.preventDefault()
@@ -469,11 +583,10 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#0f172a] text-slate-200">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-[#0f172a] text-slate-200">
       <AppHeader />
-      <div className="flex min-h-0 flex-1">
-        <main className="flex w-3/4 min-w-0 flex-col overflow-y-auto">
-          <div className="space-y-6 p-6 pb-10">
+      <main className="flex min-h-0 flex-1 w-full min-w-0 flex-col overflow-y-auto">
+        <div className="space-y-6 p-6 pb-10">
             <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <KpiCard
                 title="Total records"
@@ -498,34 +611,56 @@ function App() {
               />
             </section>
 
-            <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <section className="flex flex-col gap-8">
               <ChartCard
                 title="Thermal trend"
-                subtitle="Last 150 samples — motor temperature"
+                subtitle="Last 400 samples — motor temperature (°C)"
               >
                 <ThermalTrendChart data={chartData} />
               </ChartCard>
               <ChartCard
                 title="Vibration triaxial"
-                subtitle="Vib X, Y, Z — last 150 samples"
+                subtitle="Last 400 samples — Vib X, Y, Z"
               >
                 <VibrationTrendChart data={chartData} />
               </ChartCard>
+              <ChartCard
+                title="Motor load / current trend"
+                subtitle="Last 400 samples — line current (amp)"
+              >
+                <MotorLoadTrendChart data={chartData} />
+              </ChartCard>
+              <ChartCard
+                title="Anomaly scatter"
+                subtitle="Last 400 samples — motor temp vs amp — Red: Critical, Yellow: Warning, Slate: Normal"
+              >
+                <AnomalyScatterChart data={chartData} />
+              </ChartCard>
             </section>
+        </div>
+      </main>
 
-            <section>
-              <AnomalyScatterPanel data={chartData} />
-            </section>
-          </div>
-        </main>
+      {!isChatOpen ? (
+        <button
+          type="button"
+          onClick={() => setIsChatOpen(true)}
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-600 text-white shadow-lg transition hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-[#0f172a]"
+          aria-label="Open AI Diagnostics chat"
+        >
+          <MessageSquare className="h-6 w-6" aria-hidden />
+        </button>
+      ) : null}
+
+      {isChatOpen ? (
         <AiDiagnosticsPanel
           chatHistory={chatHistory}
           chatInput={chatInput}
           onChatInputChange={(e) => setChatInput(e.target.value)}
           onSubmit={handleSendMessage}
           isChatLoading={isChatLoading}
+          onClose={() => setIsChatOpen(false)}
         />
-      </div>
+      ) : null}
     </div>
   )
 }

@@ -24,6 +24,9 @@ from ml_model import MotorAnomalyDetector
 
 load_dotenv()
 
+# ``gemini-1.5-flash`` often returns 404 on current v1beta for new keys; override via GEMINI_MODEL.
+GEMINI_CHAT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -88,15 +91,14 @@ def chat(body: ChatRequest) -> dict[str, str] | JSONResponse:
     hallucination and output variance.
 
     Requires ``GOOGLE_API_KEY`` (or related Google GenAI env vars) in ``.env``.
+    Model id defaults to a current ``generateContent`` name (``gemini-2.5-flash``);
+    set ``GEMINI_MODEL`` to override (see Google AI ``ListModels`` if you still see 404).
     """
     try:
         if os.getenv("GOOGLE_API_KEY") is None:
             logger.warning("GOOGLE_API_KEY is not set; Gemini may reject requests.")
 
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash-latest",
-            temperature=0,
-        )
+        llm = ChatGoogleGenerativeAI(model=GEMINI_CHAT_MODEL, temperature=0)
         agent = create_pandas_dataframe_agent(
             llm,
             detector._df,
