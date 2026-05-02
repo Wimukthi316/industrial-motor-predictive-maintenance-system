@@ -3,3 +3,7 @@ uvicorn
 pandas
 scikit-learn
 pydantic
+python-dotenv
+langchain
+langchain-google-genai
+langchain-experimental

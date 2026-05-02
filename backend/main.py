@@ -2,17 +2,26 @@
 FastAPI backend for the Industrial Motor Predictive Maintenance System.
 
 Serves motor telemetry with Isolation Forest anomaly scores and aggregate stats
-for a SPA frontend on another origin (CORS enabled).
+for a SPA frontend on another origin (CORS enabled). Includes a LangChain
+pandas agent backed by Google Gemini for natural-language questions over telemetry.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from langchain_experimental.agents import create_pandas_dataframe_agent
+from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import BaseModel
 
 from ml_model import MotorAnomalyDetector
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,6 +49,12 @@ logger.info(
 )
 
 
+class ChatRequest(BaseModel):
+    """Body for POST /api/chat."""
+
+    message: str
+
+
 @app.get("/api/motor-data")
 def get_motor_data() -> list[dict]:
     """Return all motor records with ``anomaly_score`` (-1 anomaly, 1 normal)."""
@@ -60,3 +75,39 @@ def get_stats() -> dict[str, int]:
         "normal_count": normal,
         "anomaly_count": anomalies,
     }
+
+
+@app.post("/api/chat", response_model=None)
+def chat(body: ChatRequest) -> dict[str, str] | JSONResponse:
+    """
+    Answer questions about the loaded motor dataframe using a Gemini-powered agent.
+
+    Requires ``GOOGLE_API_KEY`` (or related Google GenAI env vars) in ``.env``.
+    """
+    try:
+        if os.getenv("GOOGLE_API_KEY") is None:
+            logger.warning("GOOGLE_API_KEY is not set; Gemini may reject requests.")
+
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+        agent = create_pandas_dataframe_agent(
+            llm,
+            detector._df,
+            verbose=True,
+            allow_dangerous_code=True,
+        )
+        result = agent.invoke({"input": body.message})
+        output = result.get("output")
+        if output is None:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "response": "Chat agent returned no output. Check server logs.",
+                },
+            )
+        return {"response": output}
+    except Exception as exc:  # noqa: BLE001 — return safe message to client
+        logger.exception("Chat agent failed")
+        return JSONResponse(
+            status_code=500,
+            content={"response": f"Chat request failed: {exc}"},
+        )
